@@ -49,3 +49,5 @@ endif()
 if(${build_tool})
     add_subdirectory(tool)
 endif()
+
+add_subdirectory(bind)
