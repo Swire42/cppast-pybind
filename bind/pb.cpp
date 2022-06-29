@@ -23,25 +23,54 @@ void Printer::line(std::string str) {
 
 
 
-PB_Def::PB_Def(std::string name) : name(name) {}
+Name::Name(std::string name, std::string scope, bool auto_scope) : name(name), scope(scope), auto_scope(auto_scope) {}
 
-PB_Def::PB_Def(cppast::cpp_function const& func) : PB_Def(func.name()) {}
+std::string Name::cpp_name() const {
+  return scope + name;
+}
 
-void PB_Def::print(Printer pr, std::string const& super_name) const {
-  pr.line(super_name + ".def(\"" + name + "\", &" + name + ");");
+std::string Name::self_scope() const {
+  return scope;
+}
+
+std::string Name::as_scope() const {
+  if (auto_scope) return self_scope();
+  return scope + name + "::";
+}
+
+std::string Name::bind_name() const {
+  return name;
+}
+
+std::string Name::py_name() const {
+  return name;
+}
+
+Name Name::operator+(std::string son) const {
+  return Name(son, as_scope(), false);
 }
 
 
 
-PB_Meth::PB_Meth(cppast::cpp_member_function const& func) : PB_Def(func.name()) {}
+PB_Def::PB_Def(std::string name, Name parent) : name(parent + name), parent(parent), def("def") {}
 
-void PB_Meth::print(Printer pr, std::string const& super_name) const {
-  pr.line(super_name + ".def(\"" + name + "\", &" + super_name + "::" + name + ");");
+PB_Def::PB_Def(cppast::cpp_function const& func, Name parent) : PB_Def(func.name(), parent) {}
+
+PB_Def::PB_Def(cppast::cpp_member_function const& func, Name parent) : PB_Def(func.name(), parent) {}
+
+PB_Def::PB_Def(cppast::cpp_member_variable const& var, Name parent) : PB_Def(var.name(), parent) {
+  def = "def_readwrite";
 }
 
 
 
-PB_Cons::PB_Cons(cppast::cpp_constructor const& cons) {
+void PB_Def::print(Printer pr) const {
+  pr.line(parent.bind_name() + "." + def + "(\"" + name.py_name() + "\", &" + name.cpp_name() + ");");
+}
+
+
+
+PB_Cons::PB_Cons(cppast::cpp_constructor const& cons, Name parent) : parent(parent) {
   for (cppast::cpp_function_parameter const& param : cons.parameters()) {
     params.push_back(cppast::to_string(param.type()));
   }
@@ -56,44 +85,50 @@ std::string PB_Cons::str_params() const {
   return ret;
 }
 
-void PB_Cons::print(Printer pr, std::string const& super_name) const {
-  pr.line(super_name + ".def(py::init<" + str_params() + ">());");
+void PB_Cons::print(Printer pr) const {
+  pr.line(parent.bind_name() + ".def(py::init<" + str_params() + ">());");
 }
 
 
 
-PB_Class::PB_Class(std::string name) : name(name) {}
-
-void PB_Class::add(PB_Meth meth) { meths.push_back(meth); }
-void PB_Class::add(PB_Cons cons) { conss.push_back(cons); }
-
-void PB_Class::process(cppast::cpp_entity const& entity) {
-  if (entity.kind() == cppast::cpp_entity_kind::member_function_t) {
-    add(PB_Meth(dynamic_cast<cppast::cpp_member_function const&>(entity)));
-  } else if (entity.kind() == cppast::cpp_entity_kind::constructor_t) {
-    add(PB_Cons(dynamic_cast<cppast::cpp_constructor const&>(entity)));
-  } else {
-    print_warn("ignored: " + entity.name() + " (" + cppast::to_string(entity.kind()) + ")");
-  }
-}
-
-PB_Class::PB_Class(cppast::cpp_class const& cl) : PB_Class(cl.name()) {
+PB_Class::PB_Class(cppast::cpp_class const& cl, Name parent) : name(parent + cl.name()), parent(parent) {
   for (cppast::cpp_entity const& entity : cl) {
     process(entity);
   }
 }
 
-void PB_Class::print_content(Printer pr) const {
-  for (auto const& cons : conss) {
-    cons.print(pr, name);
-  }
-  for (auto const& meth : meths) {
-    meth.print(pr, name);
+void PB_Class::add(PB_Def def) { meths.push_back(def); }
+void PB_Class::add(PB_Cons cons) { conss.push_back(cons); }
+void PB_Class::add(PB_Class cl) { cls.push_back(cl); }
+
+void PB_Class::process(cppast::cpp_entity const& entity) {
+  if (entity.kind() == cppast::cpp_entity_kind::member_function_t) {
+    add(PB_Def(dynamic_cast<cppast::cpp_member_function const&>(entity), name));
+  } else if (entity.kind() == cppast::cpp_entity_kind::constructor_t) {
+    add(PB_Cons(dynamic_cast<cppast::cpp_constructor const&>(entity), name));
+  } else if (entity.kind() == cppast::cpp_entity_kind::member_variable_t) {
+    add(PB_Def(dynamic_cast<cppast::cpp_member_variable const&>(entity), name));
+  } else if (entity.kind() == cppast::cpp_entity_kind::class_t) {
+    add(PB_Class(dynamic_cast<cppast::cpp_class const&>(entity), name));
+  } else {
+    print_warn("ignored: " + entity.name() + " (" + cppast::to_string(entity.kind()) + ")");
   }
 }
 
-void PB_Class::print(Printer pr, std::string const& module_name) const {
-  pr.line("py::class_<" + name + "> " + name + "(" + module_name + ", \"" + name + "\"); {");
+void PB_Class::print_content(Printer pr) const {
+  for (auto const& cons : conss) {
+    cons.print(pr);
+  }
+  for (auto const& meth : meths) {
+    meth.print(pr);
+  }
+  for (auto const& cl : cls) {
+    cl.print(pr);
+  }
+}
+
+void PB_Class::print(Printer pr) const {
+  pr.line("py::class_<" + name.cpp_name() + "> " + name.bind_name() + "(" + parent.bind_name() + ", \"" + name.py_name() + "\"); {");
   print_content(pr+"  ");
   pr.line("}");
   pr.line();
@@ -105,15 +140,15 @@ PB_Module::PB_Module(std::string module_name) : module_name(module_name) {}
 
 void PB_Module::print_content(Printer pr) const {
   for (auto const& mod : mods) {
-    mod.print(pr, module_name);
+    mod.print(pr);
   }
 
   for (auto const& cl : cls) {
-    cl.print(pr, module_name);
+    cl.print(pr);
   }
 
   for (auto const& def : defs) {
-    def.print(pr, module_name);
+    def.print(pr);
   }
 }
 
@@ -123,11 +158,11 @@ void PB_Module::add(PB_Class cl) { cls.push_back(cl); }
 
 void PB_Module::process(cppast::cpp_entity const& entity) {
   if (entity.kind() == cppast::cpp_entity_kind::function_t) {
-    add(PB_Def(dynamic_cast<cppast::cpp_function const&>(entity)));
+    add(PB_Def(dynamic_cast<cppast::cpp_function const&>(entity), module_name));
   } else if (entity.kind() == cppast::cpp_entity_kind::namespace_t) {
-    add(PB_SubModule(dynamic_cast<cppast::cpp_namespace const&>(entity)));
+    add(PB_SubModule(dynamic_cast<cppast::cpp_namespace const&>(entity), module_name));
   } else if (entity.kind() == cppast::cpp_entity_kind::class_t) {
-    add(PB_Class(dynamic_cast<cppast::cpp_class const&>(entity)));
+    add(PB_Class(dynamic_cast<cppast::cpp_class const&>(entity), module_name));
   } else {
     print_warn("ignored: " + entity.name() + " (" + cppast::to_string(entity.kind()) + ")");
   }
@@ -135,17 +170,15 @@ void PB_Module::process(cppast::cpp_entity const& entity) {
 
 
 
-PB_SubModule::PB_SubModule(std::string module_name) : PB_Module(module_name) {}
-
-PB_SubModule::PB_SubModule(cppast::cpp_namespace const& ns) : PB_SubModule(ns.name()) {
+PB_SubModule::PB_SubModule(cppast::cpp_namespace const& ns, Name parent) : PB_Module(ns.name()), parent(parent) {
   for (cppast::cpp_entity const& entity : ns) {
     process(entity);
   }
 }
 
-void PB_SubModule::print(Printer pr, std::string super) const {
-  pr.line("py::module " + module_name + " = " + super + ".def_submodule(\"" + module_name + "\"); {");
-  pr.line("  using namespace " + module_name + ";");
+void PB_SubModule::print(Printer pr) const {
+  pr.line("py::module " + module_name.bind_name() + " = " + parent.bind_name() + ".def_submodule(\"" + module_name.py_name() + "\"); {");
+  pr.line("  using namespace " + module_name.bind_name() + ";");
   print_content(pr+"  ");
   pr.line("}");
   pr.line();
@@ -156,7 +189,7 @@ void PB_SubModule::print(Printer pr, std::string super) const {
 PB_RootModule::PB_RootModule(std::string lib_name) : PB_Module("m"), lib_name(lib_name) {}
 
 void PB_RootModule::print(Printer pr) const {
-  pr.line("PYBIND11_MODULE(" + lib_name + ", " + module_name + ") {");
+  pr.line("PYBIND11_MODULE(" + lib_name + ", " + module_name.bind_name() + ") {");
   print_content(pr+"  ");
   pr.line("}");
   pr.line();

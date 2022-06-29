@@ -7,10 +7,13 @@
 #include <cppast/cpp_namespace.hpp>
 #include <cppast/cpp_function.hpp>
 #include <cppast/cpp_member_function.hpp>
+#include <cppast/cpp_member_variable.hpp>
 #include <cppast/cpp_class.hpp>
 #include <cppast/cpp_file.hpp>
 
 void print_warn(const std::string& msg);
+
+
 
 struct Printer {
   std::ostream& out;
@@ -25,56 +28,73 @@ struct Printer {
   void line(std::string str);
 };
 
-struct PB_Def {
+class Name {
   std::string name;
-  
-  PB_Def(std::string name);
+  bool auto_scope;
+  std::string scope;
 
-  PB_Def(cppast::cpp_function const& func);
+ public:
+  explicit Name(std::string name = "", std::string scope = "", bool auto_scope = true);
 
-  virtual void print(Printer pr, std::string const& super_name) const;
+  std::string cpp_name() const;
+  std::string self_scope() const;
+  std::string as_scope() const;
+  std::string bind_name() const; // TODO prevent name collisions
+  std::string py_name() const;
+
+  Name operator+(std::string son) const;
 };
 
-struct PB_Meth : PB_Def {
-  PB_Meth(cppast::cpp_member_function const& func);
+struct PB_Def {
+  Name name;
+  Name parent;
+  std::string def;
+  
+  PB_Def(std::string name, Name parent);
 
-  void print(Printer pr, std::string const& super_name) const override;
+  PB_Def(cppast::cpp_function const& func, Name parent);
+  PB_Def(cppast::cpp_member_function const& func, Name parent);
+  PB_Def(cppast::cpp_member_variable const& var, Name parent);
+
+  void print(Printer pr) const;
 };
 
 struct PB_Cons {
   std::vector<std::string> params;
+  Name parent;
 
-  PB_Cons(cppast::cpp_constructor const& cons);
+  PB_Cons(cppast::cpp_constructor const& cons, Name parent);
 
   std::string str_params() const;
 
-  void print(Printer pr, std::string const& super_name) const;
+  void print(Printer pr) const;
 };
 
 struct PB_Class {
-  std::string name;
+  Name name;
+  Name parent;
 
-  std::vector<PB_Meth> meths;
+  std::vector<PB_Def> meths;
   std::vector<PB_Cons> conss;
+  std::vector<PB_Class> cls;
 
-  PB_Class(std::string name);
+  PB_Class(cppast::cpp_class const& cl, Name parent);
 
-  void add(PB_Meth meth);
+  void add(PB_Def meth);
   void add(PB_Cons cons);
+  void add(PB_Class cl);
 
   void process(cppast::cpp_entity const& entity);
 
-  PB_Class(cppast::cpp_class const& cl);
-
   void print_content(Printer pr) const;
 
-  void print(Printer pr, std::string const& module_name) const;
+  void print(Printer pr) const;
 };
 
 struct PB_SubModule;
 
 struct PB_Module {
-  std::string module_name;
+  Name module_name;
   std::vector<PB_SubModule> mods;
   std::vector<PB_Def> defs;
   std::vector<PB_Class> cls;
@@ -91,11 +111,11 @@ struct PB_Module {
 };
 
 struct PB_SubModule : PB_Module {
-  PB_SubModule(std::string module_name);
+  Name parent;
 
-  PB_SubModule(cppast::cpp_namespace const& ns);
+  PB_SubModule(cppast::cpp_namespace const& ns, Name parent);
 
-  void print(Printer pr, std::string super) const;
+  void print(Printer pr) const;
 };
 
 struct PB_RootModule : PB_Module {
