@@ -8,6 +8,7 @@
 #include <cppast/cpp_function.hpp>
 #include <cppast/cpp_member_function.hpp>
 #include <cppast/cpp_member_variable.hpp>
+#include <cppast/cpp_variable.hpp>
 #include <cppast/cpp_class.hpp>
 #include <cppast/cpp_file.hpp>
 
@@ -55,6 +56,7 @@ struct PB_Def {
   PB_Def(cppast::cpp_function const& func, Name parent);
   PB_Def(cppast::cpp_member_function const& func, Name parent);
   PB_Def(cppast::cpp_member_variable const& var, Name parent);
+  PB_Def(cppast::cpp_variable const& var, Name parent);
 
   void print(Printer pr) const;
 };
@@ -63,6 +65,7 @@ struct PB_Cons {
   std::vector<std::string> params;
   Name parent;
 
+  PB_Cons(Name parent);
   PB_Cons(cppast::cpp_constructor const& cons, Name parent);
 
   std::string str_params() const;

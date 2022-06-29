@@ -59,7 +59,30 @@ PB_Def::PB_Def(cppast::cpp_function const& func, Name parent) : PB_Def(func.name
 PB_Def::PB_Def(cppast::cpp_member_function const& func, Name parent) : PB_Def(func.name(), parent) {}
 
 PB_Def::PB_Def(cppast::cpp_member_variable const& var, Name parent) : PB_Def(var.name(), parent) {
-  def = "def_readwrite";
+  if (var.type().kind() == cppast::cpp_type_kind::cv_qualified_t
+      && is_const(dynamic_cast<cppast::cpp_cv_qualified_type const&>(var.type()).cv_qualifier())) {
+    def = "def_readonly";
+  } else {
+    def = "def_readwrite";
+  }
+}
+
+PB_Def::PB_Def(cppast::cpp_variable const& var, Name parent) : PB_Def(var.name(), parent) {
+  bool is_static = false;
+  bool is_writable = true;
+
+  if (var.type().kind() == cppast::cpp_type_kind::cv_qualified_t
+      && is_const(dynamic_cast<cppast::cpp_cv_qualified_type const&>(var.type()).cv_qualifier())) {
+    is_writable = false;
+  }
+
+  if (cppast::is_static(var.storage_class())) is_static = true;
+
+  if (is_writable) {
+    def = is_static ? "def_readwrite_static" : "def_readwrite";
+  } else {
+    def = is_static ? "def_readonly_static" : "def_readonly";
+  }
 }
 
 
@@ -69,6 +92,8 @@ void PB_Def::print(Printer pr) const {
 }
 
 
+
+PB_Cons::PB_Cons(Name parent) : parent(parent) {}
 
 PB_Cons::PB_Cons(cppast::cpp_constructor const& cons, Name parent) : parent(parent) {
   for (cppast::cpp_function_parameter const& param : cons.parameters()) {
@@ -108,6 +133,8 @@ void PB_Class::process(cppast::cpp_entity const& entity) {
     add(PB_Cons(dynamic_cast<cppast::cpp_constructor const&>(entity), name));
   } else if (entity.kind() == cppast::cpp_entity_kind::member_variable_t) {
     add(PB_Def(dynamic_cast<cppast::cpp_member_variable const&>(entity), name));
+  } else if (entity.kind() == cppast::cpp_entity_kind::variable_t) {
+    add(PB_Def(dynamic_cast<cppast::cpp_variable const&>(entity), name));
   } else if (entity.kind() == cppast::cpp_entity_kind::class_t) {
     add(PB_Class(dynamic_cast<cppast::cpp_class const&>(entity), name));
   } else {
@@ -116,6 +143,9 @@ void PB_Class::process(cppast::cpp_entity const& entity) {
 }
 
 void PB_Class::print_content(Printer pr) const {
+  if (conss.empty()) {
+    PB_Cons(name).print(pr);
+  }
   for (auto const& cons : conss) {
     cons.print(pr);
   }
@@ -163,6 +193,9 @@ void PB_Module::process(cppast::cpp_entity const& entity) {
     add(PB_SubModule(dynamic_cast<cppast::cpp_namespace const&>(entity), module_name));
   } else if (entity.kind() == cppast::cpp_entity_kind::class_t) {
     add(PB_Class(dynamic_cast<cppast::cpp_class const&>(entity), module_name));
+  //} else if (entity.kind() == cppast::cpp_entity_kind::variable_t) {
+    // TODO: does not work
+    //add(PB_Def(dynamic_cast<cppast::cpp_variable const&>(entity), module_name));
   } else {
     print_warn("ignored: " + entity.name() + " (" + cppast::to_string(entity.kind()) + ")");
   }
