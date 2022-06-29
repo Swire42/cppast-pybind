@@ -37,6 +37,7 @@ class Name {
  public:
   explicit Name(std::string name = "", std::string scope = "", bool auto_scope = true);
 
+  std::string cpp_simple_name() const;
   std::string cpp_name() const;
   std::string self_scope() const;
   std::string as_scope() const;
@@ -54,11 +55,20 @@ struct PB_Def {
   PB_Def(std::string name, Name parent);
 
   PB_Def(cppast::cpp_function const& func, Name parent);
-  PB_Def(cppast::cpp_member_function const& func, Name parent);
   PB_Def(cppast::cpp_member_variable const& var, Name parent);
   PB_Def(cppast::cpp_variable const& var, Name parent);
 
   void print(Printer pr) const;
+};
+
+struct PB_Meth : PB_Def {
+  std::string ret_type;
+  std::vector<std::string> params;
+  bool is_virt, is_pure;
+
+  PB_Meth(cppast::cpp_member_function const& func, Name parent);
+
+  void print_trampoline(Printer pr) const;
 };
 
 struct PB_Cons {
@@ -77,21 +87,29 @@ struct PB_Class {
   Name name;
   Name parent;
 
-  std::vector<PB_Def> meths;
+  std::vector<std::string> bases;
+
+  std::vector<PB_Def> mems;
+  std::vector<PB_Meth> meths;
   std::vector<PB_Cons> conss;
   std::vector<PB_Class> cls;
 
+  bool needs_trampoline;
+
   PB_Class(cppast::cpp_class const& cl, Name parent);
 
-  void add(PB_Def meth);
+  void add(PB_Def def);
+  void add(PB_Meth meth);
   void add(PB_Cons cons);
   void add(PB_Class cl);
 
   void process(cppast::cpp_entity const& entity);
 
   void print_content(Printer pr) const;
-
   void print(Printer pr) const;
+
+  std::string trampoline_name() const;
+  void print_trampoline(Printer pr) const;
 };
 
 struct PB_SubModule;
@@ -104,6 +122,7 @@ struct PB_Module {
 
   PB_Module(std::string module_name);
 
+  void print_prelude_content(Printer pr) const;
   void print_content(Printer pr) const;
 
   void add(PB_SubModule mod);
@@ -119,6 +138,7 @@ struct PB_SubModule : PB_Module {
   PB_SubModule(cppast::cpp_namespace const& ns, Name parent);
 
   void print(Printer pr) const;
+  void print_prelude(Printer pr) const;
 };
 
 struct PB_RootModule : PB_Module {

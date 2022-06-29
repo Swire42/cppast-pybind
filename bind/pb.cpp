@@ -25,6 +25,10 @@ void Printer::line(std::string str) {
 
 Name::Name(std::string name, std::string scope, bool auto_scope) : name(name), scope(scope), auto_scope(auto_scope) {}
 
+std::string Name::cpp_simple_name() const {
+  return name;
+}
+
 std::string Name::cpp_name() const {
   return scope + name;
 }
@@ -39,7 +43,7 @@ std::string Name::as_scope() const {
 }
 
 std::string Name::bind_name() const {
-  return name;
+  return "PB__" + name;
 }
 
 std::string Name::py_name() const {
@@ -55,8 +59,6 @@ Name Name::operator+(std::string son) const {
 PB_Def::PB_Def(std::string name, Name parent) : name(parent + name), parent(parent), def("def") {}
 
 PB_Def::PB_Def(cppast::cpp_function const& func, Name parent) : PB_Def(func.name(), parent) {}
-
-PB_Def::PB_Def(cppast::cpp_member_function const& func, Name parent) : PB_Def(func.name(), parent) {}
 
 PB_Def::PB_Def(cppast::cpp_member_variable const& var, Name parent) : PB_Def(var.name(), parent) {
   if (var.type().kind() == cppast::cpp_type_kind::cv_qualified_t
@@ -85,10 +87,51 @@ PB_Def::PB_Def(cppast::cpp_variable const& var, Name parent) : PB_Def(var.name()
   }
 }
 
-
-
 void PB_Def::print(Printer pr) const {
   pr.line(parent.bind_name() + "." + def + "(\"" + name.py_name() + "\", &" + name.cpp_name() + ");");
+}
+
+
+
+PB_Meth::PB_Meth(cppast::cpp_member_function const& func, Name parent) : PB_Def(func.name(), parent) {
+  auto& vi = func.virtual_info();
+
+  is_virt = cppast::is_virtual(vi);
+  is_pure = cppast::is_pure(vi);
+
+  ret_type = cppast::to_string(func.return_type());
+
+  for (cppast::cpp_function_parameter const& param : func.parameters()) {
+    params.push_back(cppast::to_string(param.type()));
+  }
+}
+
+void PB_Meth::print_trampoline(Printer pr) const {
+  if (!is_pure) return;
+
+  std::string decl = ret_type + " " + name.cpp_simple_name() + "(";
+  for (unsigned k = 0; k < params.size(); k++) {
+    decl += (k ? ", " : "") + params[k] + " arg_" + std::to_string(k);
+  }
+  decl += ") override";
+
+  pr.line(decl + " {");
+  if (is_pure) pr.line("  PYBIND11_OVERRIDE_PURE(");
+  else pr.line("  PYBIND11_OVERRIDE(");
+  pr.line("    /* return type:   */ " + ret_type);
+  pr.line("  , /* parent class:  */ " + parent.cpp_name());
+  pr.line("  , /* function name: */ " + name.cpp_simple_name());
+  if (params.empty()) {
+    pr.line("    ,");
+  } else {
+    pr.line("    /* arguments: */");
+    for (unsigned k = 0; k < params.size(); k++) {
+      pr.line("    , arg_" + std::to_string(k));
+    }
+  }
+  pr.line("  );");
+  pr.line("}");
+  pr.line();
 }
 
 
@@ -117,18 +160,30 @@ void PB_Cons::print(Printer pr) const {
 
 
 PB_Class::PB_Class(cppast::cpp_class const& cl, Name parent) : name(parent + cl.name()), parent(parent) {
+  needs_trampoline = false;
+
+  for (cppast::cpp_base_class const& base : cl.bases()) {
+    bases.push_back(base.name());
+  }
+
   for (cppast::cpp_entity const& entity : cl) {
     process(entity);
   }
 }
 
-void PB_Class::add(PB_Def def) { meths.push_back(def); }
+void PB_Class::add(PB_Def def) { mems.push_back(def); }
+
+void PB_Class::add(PB_Meth meth) {
+  meths.push_back(meth);
+  if (meth.is_virt) needs_trampoline = true;
+}
+
 void PB_Class::add(PB_Cons cons) { conss.push_back(cons); }
 void PB_Class::add(PB_Class cl) { cls.push_back(cl); }
 
 void PB_Class::process(cppast::cpp_entity const& entity) {
   if (entity.kind() == cppast::cpp_entity_kind::member_function_t) {
-    add(PB_Def(dynamic_cast<cppast::cpp_member_function const&>(entity), name));
+    add(PB_Meth(dynamic_cast<cppast::cpp_member_function const&>(entity), name));
   } else if (entity.kind() == cppast::cpp_entity_kind::constructor_t) {
     add(PB_Cons(dynamic_cast<cppast::cpp_constructor const&>(entity), name));
   } else if (entity.kind() == cppast::cpp_entity_kind::member_variable_t) {
@@ -149,6 +204,9 @@ void PB_Class::print_content(Printer pr) const {
   for (auto const& cons : conss) {
     cons.print(pr);
   }
+  for (auto const& mem : mems) {
+    mem.print(pr);
+  }
   for (auto const& meth : meths) {
     meth.print(pr);
   }
@@ -158,9 +216,32 @@ void PB_Class::print_content(Printer pr) const {
 }
 
 void PB_Class::print(Printer pr) const {
-  pr.line("py::class_<" + name.cpp_name() + "> " + name.bind_name() + "(" + parent.bind_name() + ", \"" + name.py_name() + "\"); {");
+  std::string decl = "py::class_<" + name.cpp_name();
+  for (std::string const& base : bases) decl += ", " + base;
+  if (needs_trampoline) decl += ", " + trampoline_name();
+  decl += "> " + name.bind_name() + "(" + parent.bind_name() + ", \"" + name.py_name() + "\");";
+  pr.line(decl + " {");
   print_content(pr+"  ");
   pr.line("}");
+  pr.line();
+}
+
+std::string PB_Class::trampoline_name() const {
+  return "Tr"+name.bind_name();
+}
+
+void PB_Class::print_trampoline(Printer pr) const {
+  if (!needs_trampoline) return;
+
+  pr.line("struct " + trampoline_name() + " : public " + name.cpp_name() + " {");
+  Printer pr2 = pr+"  ";
+  pr2.line("using " + name.cpp_name() + "::" + name.cpp_simple_name() + ";");
+  pr2.line();
+  for (auto const& meth : meths) {
+    // TODO: add inherited methods
+    meth.print_trampoline(pr2);
+  }
+  pr.line("};");
   pr.line();
 }
 
@@ -179,6 +260,16 @@ void PB_Module::print_content(Printer pr) const {
 
   for (auto const& def : defs) {
     def.print(pr);
+  }
+}
+
+void PB_Module::print_prelude_content(Printer pr) const {
+  for (auto const& mod : mods) {
+    mod.print_prelude(pr);
+  }
+
+  for (auto const& cl : cls) {
+    cl.print_trampoline(pr);
   }
 }
 
@@ -209,9 +300,15 @@ PB_SubModule::PB_SubModule(cppast::cpp_namespace const& ns, Name parent) : PB_Mo
   }
 }
 
+void PB_SubModule::print_prelude(Printer pr) const {
+  pr.line("namespace " + module_name.bind_name() + " {");
+  print_prelude_content(pr+"  ");
+  pr.line("}");
+}
+
 void PB_SubModule::print(Printer pr) const {
   pr.line("py::module " + module_name.bind_name() + " = " + parent.bind_name() + ".def_submodule(\"" + module_name.py_name() + "\"); {");
-  pr.line("  using namespace " + module_name.bind_name() + ";");
+  pr.line("  using namespace " + module_name.cpp_name() + ";");
   print_content(pr+"  ");
   pr.line("}");
   pr.line();
@@ -244,6 +341,9 @@ void PB_RootModule::print_prelude(Printer pr) const {
   for (std::string const& path : includes) {
     pr.line("#include \"" + path + "\"");
   }
+  pr.line();
+
+  print_prelude_content(pr);
   pr.line();
 }
 
