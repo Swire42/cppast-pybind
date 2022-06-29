@@ -219,9 +219,7 @@ void PB_SubModule::print(Printer pr) const {
 
 
 
-PB_RootModule::PB_RootModule(std::string lib_name) : PB_Module("m"), lib_name(lib_name) {}
-
-void PB_RootModule::print(Printer pr) const {
+void PB_RootModule::print_module(Printer pr) const {
   pr.line("PYBIND11_MODULE(" + lib_name + ", " + module_name.bind_name() + ") {");
   print_content(pr+"  ");
   pr.line("}");
@@ -230,31 +228,32 @@ void PB_RootModule::print(Printer pr) const {
 
 
 
-PB_File::PB_File(std::string lib_name) : mod(lib_name) {}
-
-PB_File::PB_File(cppast::cpp_file const& file, std::string lib_name) : PB_File(lib_name) {
+PB_RootModule::PB_RootModule(cppast::cpp_file const& file, std::string lib_name) : PB_Module("m"), lib_name(lib_name) {
   includes.push_back(file.name());
 
   for (cppast::cpp_entity const& entity : file) {
-    mod.process(entity);
+    process(entity);
   }
 }
 
-void PB_File::print(std::ostream& out) const {
-  out << "#include <pybind11/pybind11.h>\n";
-  out << "namespace py = pybind11;\n";
-  out << std::endl;
+void PB_RootModule::print_prelude(Printer pr) const {
+  pr.line("#include <pybind11/pybind11.h>");
+  pr.line("namespace py = pybind11;");
+  pr.line();
 
   for (std::string const& path : includes) {
-    out << "#include \"" << path << "\"\n";
+    pr.line("#include \"" + path + "\"");
   }
-  out << std::endl;
+  pr.line();
+}
 
-  mod.print(Printer(out, ""));
+void PB_RootModule::print_file(Printer pr) const {
+  print_prelude(pr);
+  print_module(pr);
 }
 
 
 
 void process_file(std::ostream& out, cppast::cpp_file const& file) {
-  PB_File(file, "example").print(out);
+  PB_RootModule(file, "example").print_file(Printer(out, ""));
 }

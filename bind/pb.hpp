@@ -123,22 +123,14 @@ struct PB_SubModule : PB_Module {
 
 struct PB_RootModule : PB_Module {
   std::string lib_name;
-
-  PB_RootModule(std::string lib_name);
-
-  void print(Printer pr) const;
-};
-
-struct PB_File {
   std::vector<std::string> includes;
 
-  PB_RootModule mod;
+  PB_RootModule(cppast::cpp_file const& file, std::string lib_name);
 
-  PB_File(std::string lib_name);
+  void print_prelude(Printer pr) const;
+  void print_module(Printer pr) const;
 
-  PB_File(cppast::cpp_file const& file, std::string lib_name);
-
-  void print(std::ostream& out) const;
+  void print_file(Printer pr) const;
 };
 
 void process_file(std::ostream& out, cppast::cpp_file const& file);
