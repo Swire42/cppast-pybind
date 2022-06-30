@@ -56,6 +56,10 @@ Name Name::operator+(std::string son) const {
   return Name(son, as_scope(), false);
 }
 
+void Name::change_parent(Name new_parent) {
+  scope = new_parent.as_scope();
+}
+
 
 
 PB_Def::PB_Def(std::string name, Name parent) : name(parent + name), parent(parent), def("def") {}
@@ -87,6 +91,11 @@ PB_Def::PB_Def(cppast::cpp_variable const& var, Name parent) : PB_Def(var.name()
   } else {
     def = is_static ? "def_readonly_static" : "def_readonly";
   }
+}
+
+void PB_Def::change_parent(Name new_parent) {
+  parent = new_parent;
+  name.change_parent(new_parent);
 }
 
 void PB_Def::print(Printer pr) const {
@@ -185,8 +194,14 @@ PB_Class::PB_Class(cppast::cpp_class const& cl, Name parent, cppast::cpp_entity_
 
 void PB_Class::inherit(cppast::cpp_base_class const& base, cppast::cpp_entity_index const& idx) {
   PB_Class base_class = PB_Class(get_class(idx, base).value(), Name(), idx); // Todo Name() is bad
-  for (auto const& k : base_class.mems) add(k);
-  for (auto const& k : base_class.meths) add(k);
+  for (auto k : base_class.mems) {
+    k.change_parent(name);
+    add(k);
+  }
+  for (auto k : base_class.meths) {
+    k.change_parent(name);
+    add(k);
+  }
   for (auto const& k : base_class.cls) add(k);
 }
 

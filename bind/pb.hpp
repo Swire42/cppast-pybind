@@ -45,6 +45,8 @@ class Name {
   std::string py_name() const;
 
   Name operator+(std::string son) const;
+
+  void change_parent(Name new_parent);
 };
 
 struct PB_Def {
@@ -57,6 +59,8 @@ struct PB_Def {
   PB_Def(cppast::cpp_function const& func, Name parent);
   PB_Def(cppast::cpp_member_variable const& var, Name parent);
   PB_Def(cppast::cpp_variable const& var, Name parent);
+
+  void change_parent(Name new_parent);
 
   void print(Printer pr) const;
 };
