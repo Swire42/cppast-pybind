@@ -26,11 +26,9 @@ void print_error(const std::string& msg)
 // parse a file
 std::unique_ptr<cppast::cpp_file> parse_file(const cppast::libclang_compile_config& config,
                        const cppast::diagnostic_logger&     logger,
-                       const std::string& filename, bool fatal_error)
+                       const std::string& filename, bool fatal_error,
+                       cppast::cpp_entity_index& idx)
 {
-  // the entity index is used to resolve cross references in the AST
-  // we don't need that, so it will not be needed afterwards
-  cppast::cpp_entity_index idx;
   // the parser is used to parse the entity
   // there can be multiple parser implementations
   cppast::libclang_parser parser(type_safe::ref(logger));
@@ -177,11 +175,14 @@ try
     if (options.count("verbose"))
       logger.set_verbose(true);
 
+    // used to resolve cross references
+    cppast::cpp_entity_index idx;
+
     auto file = parse_file(config, logger, options["file"].as<std::string>(),
-                 options.count("fatal_errors") == 1);
+                 options.count("fatal_errors") == 1, idx);
     if (!file)
       return 2;
-    process_file(std::cout, *file);
+    process_file(std::cout, *file, idx);
   }
 }
 catch (const cppast::libclang_error& ex)

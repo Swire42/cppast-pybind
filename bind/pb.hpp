@@ -64,11 +64,14 @@ struct PB_Def {
 struct PB_Meth : PB_Def {
   std::string ret_type;
   std::vector<std::string> params;
-  bool is_virt, is_pure;
+  bool is_virt, is_pure, is_override, is_final;
 
   PB_Meth(cppast::cpp_member_function const& func, Name parent);
 
+  bool needs_trampoline() const;
   void print_trampoline(Printer pr) const;
+
+  bool same_sig(PB_Meth const& other) const;
 };
 
 struct PB_Cons {
@@ -94,20 +97,21 @@ struct PB_Class {
   std::vector<PB_Cons> conss;
   std::vector<PB_Class> cls;
 
-  bool needs_trampoline;
+  PB_Class(cppast::cpp_class const& cl, Name parent, cppast::cpp_entity_index const& idx);
 
-  PB_Class(cppast::cpp_class const& cl, Name parent);
+  void inherit(cppast::cpp_type const& type, cppast::cpp_entity_index const& idx);
 
   void add(PB_Def def);
   void add(PB_Meth meth);
   void add(PB_Cons cons);
   void add(PB_Class cl);
 
-  void process(cppast::cpp_entity const& entity);
+  void process(cppast::cpp_entity const& entity, cppast::cpp_entity_index const& idx);
 
   void print_content(Printer pr) const;
   void print(Printer pr) const;
 
+  bool needs_trampoline() const;
   std::string trampoline_name() const;
   void print_trampoline(Printer pr) const;
 };
@@ -120,7 +124,7 @@ struct PB_Module {
   std::vector<PB_Def> defs;
   std::vector<PB_Class> cls;
 
-  PB_Module(std::string module_name);
+  PB_Module(std::string module_name, cppast::cpp_entity_index const& idx);
 
   void print_prelude_content(Printer pr) const;
   void print_content(Printer pr) const;
@@ -129,13 +133,13 @@ struct PB_Module {
   void add(PB_Def def);
   void add(PB_Class cl);
 
-  void process(cppast::cpp_entity const& entity);
+  void process(cppast::cpp_entity const& entity, cppast::cpp_entity_index const& idx);
 };
 
 struct PB_SubModule : PB_Module {
   Name parent;
 
-  PB_SubModule(cppast::cpp_namespace const& ns, Name parent);
+  PB_SubModule(cppast::cpp_namespace const& ns, Name parent, cppast::cpp_entity_index const& idx);
 
   void print(Printer pr) const;
   void print_prelude(Printer pr) const;
@@ -145,7 +149,7 @@ struct PB_RootModule : PB_Module {
   std::string lib_name;
   std::vector<std::string> includes;
 
-  PB_RootModule(cppast::cpp_file const& file, std::string lib_name);
+  PB_RootModule(cppast::cpp_file const& file, std::string lib_name, cppast::cpp_entity_index const& idx);
 
   void print_prelude(Printer pr) const;
   void print_module(Printer pr) const;
@@ -153,4 +157,4 @@ struct PB_RootModule : PB_Module {
   void print_file(Printer pr) const;
 };
 
-void process_file(std::ostream& out, cppast::cpp_file const& file);
+void process_file(std::ostream& out, cppast::cpp_file const& file, cppast::cpp_entity_index const& idx);
