@@ -64,7 +64,7 @@ struct PB_Def {
 struct PB_Meth : PB_Def {
   std::string ret_type;
   std::vector<std::string> params;
-  bool is_virt, is_pure, is_override, is_final;
+  bool is_virtual, is_pure, is_override, is_final;
 
   PB_Meth(cppast::cpp_member_function const& func, Name parent);
 
@@ -99,7 +99,7 @@ struct PB_Class {
 
   PB_Class(cppast::cpp_class const& cl, Name parent, cppast::cpp_entity_index const& idx);
 
-  void inherit(cppast::cpp_type const& type, cppast::cpp_entity_index const& idx);
+  void inherit(cppast::cpp_base_class const& base, cppast::cpp_entity_index const& idx);
 
   void add(PB_Def def);
   void add(PB_Meth meth);

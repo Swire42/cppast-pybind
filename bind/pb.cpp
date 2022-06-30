@@ -98,8 +98,10 @@ void PB_Def::print(Printer pr) const {
 PB_Meth::PB_Meth(cppast::cpp_member_function const& func, Name parent) : PB_Def(func.name(), parent) {
   auto& vi = func.virtual_info();
 
-  is_virt = cppast::is_virtual(vi);
+  is_virtual = cppast::is_virtual(vi);
   is_pure = cppast::is_pure(vi);
+  is_override = cppast::is_overriding(vi);
+  is_final = cppast::is_final(vi);
 
   ret_type = cppast::to_string(func.return_type());
 
@@ -109,7 +111,7 @@ PB_Meth::PB_Meth(cppast::cpp_member_function const& func, Name parent) : PB_Def(
 }
 
 bool PB_Meth::needs_trampoline() const {
-  return (is_virt || is_override) && !is_final;
+  return (is_virtual || is_override) && !is_final;
 }
 
 void PB_Meth::print_trampoline(Printer pr) const {
@@ -173,7 +175,7 @@ PB_Class::PB_Class(cppast::cpp_class const& cl, Name parent, cppast::cpp_entity_
   for (cppast::cpp_base_class const& base : cl.bases()) {
     bases.push_back(base.name());
 
-    inherit(base.type(), idx);
+    inherit(base, idx);
   }
 
   for (cppast::cpp_entity const& entity : cl) {
@@ -181,24 +183,11 @@ PB_Class::PB_Class(cppast::cpp_class const& cl, Name parent, cppast::cpp_entity_
   }
 }
 
-void PB_Class::inherit(cppast::cpp_type const& type, cppast::cpp_entity_index const& idx) {
-  if (type.kind() == cppast::cpp_type_kind::user_defined_t) {
-    cppast::cpp_user_defined_type const& user_type = dynamic_cast<cppast::cpp_user_defined_type const&>(type);
-    auto const& ref = user_type.entity();
-    if (ref.is_overloaded()) {
-      print_warn("overloaded types not supported");
-      return;
-    }
-
-    cppast::cpp_entity const& base_entity = ref.get(idx)[0].get();
-    
-    if(base_entity.kind() == cppast::cpp_entity_kind::class_t) {
-      PB_Class base_class = PB_Class(dynamic_cast<cppast::cpp_class const&>(base_entity), Name(), idx); // Todo Name() is bad
-      for (auto const& k : base_class.mems) add(k);
-      for (auto const& k : base_class.meths) add(k);
-      for (auto const& k : base_class.cls) add(k);
-    }
-  }
+void PB_Class::inherit(cppast::cpp_base_class const& base, cppast::cpp_entity_index const& idx) {
+  PB_Class base_class = PB_Class(get_class(idx, base).value(), Name(), idx); // Todo Name() is bad
+  for (auto const& k : base_class.mems) add(k);
+  for (auto const& k : base_class.meths) add(k);
+  for (auto const& k : base_class.cls) add(k);
 }
 
 void PB_Class::add(PB_Def def) { mems.push_back(def); }
