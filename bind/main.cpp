@@ -51,7 +51,7 @@ try
     ("v,verbose", "be verbose when parsing")
     ("fatal_errors", "abort program when a parser error occurs, instead of doing error correction")
     ("file", "the file that is being parsed (last positional argument)",
-     cxxopts::value<std::string>());
+     cxxopts::value<std::vector<std::string>>());
   option_list.add_options("compilation")
     ("database_dir", "set the directory where a 'compile_commands.json' file is located containing build information",
     cxxopts::value<std::string>())
@@ -85,7 +85,7 @@ try
     std::cout << '\n';
     std::cout << "Using libclang version " << CPPAST_CLANG_VERSION_STRING << '\n';
   }
-  else if (!options.count("file") || options["file"].as<std::string>().empty())
+  else if (!options.count("file") || options["file"].as<std::vector<std::string>>().empty())
   {
     print_error("missing file argument");
     return 1;
@@ -104,7 +104,7 @@ try
                             options["database_file"].as<std::string>());
       else
         config
-          = cppast::libclang_compile_config(database, options["file"].as<std::string>());
+          = cppast::libclang_compile_config(database, options["file"].as<std::vector<std::string>>()[0]);
     }
 
     if (options.count("verbose"))
@@ -175,14 +175,21 @@ try
     if (options.count("verbose"))
       logger.set_verbose(true);
 
-    // used to resolve cross references
-    cppast::cpp_entity_index idx;
+    PB_RootModule mod("example");
 
-    auto file = parse_file(config, logger, options["file"].as<std::string>(),
-                 options.count("fatal_errors") == 1, idx);
-    if (!file)
-      return 2;
-    process_file(std::cout, *file, idx);
+    for (std::string const& filename : options["file"].as<std::vector<std::string>>()) {
+      // used to resolve cross references
+      cppast::cpp_entity_index idx;
+
+      auto file = parse_file(config, logger, filename,
+                   options.count("fatal_errors") == 1, idx);
+      if (!file)
+        return 2;
+      //process_file(std::cout, *file, idx);
+      mod += PB_RootModule(*file, "example", Context(idx));
+    }
+
+    mod.print_file(Printer(std::cout, ""));
   }
 }
 catch (const cppast::libclang_error& ex)

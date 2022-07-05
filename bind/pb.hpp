@@ -151,6 +151,7 @@ struct PB_Module {
   std::vector<PB_Def> defs;
   ClassCollection cls;
 
+  PB_Module(std::string module_name);
   PB_Module(std::string module_name, Context ctx);
 
   void print_prelude_content(Printer pr) const;
@@ -176,12 +177,15 @@ struct PB_RootModule : PB_Module {
   std::string lib_name;
   std::vector<std::string> includes;
 
+  PB_RootModule(std::string lib_name);
   PB_RootModule(cppast::cpp_file const& file, std::string lib_name, Context ctx);
 
   void print_prelude(Printer pr) const;
   void print_module(Printer pr) const;
 
   void print_file(Printer pr) const;
+
+  PB_RootModule& operator+=(PB_RootModule const& other);
 };
 
 void process_file(std::ostream& out, cppast::cpp_file const& file, cppast::cpp_entity_index const& idx);

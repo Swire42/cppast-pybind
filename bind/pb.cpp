@@ -437,6 +437,7 @@ void ClassCollection::print_trampolines(Printer pr) const {
 
 
 
+PB_Module::PB_Module(std::string module_name) : module_name(module_name) {}
 PB_Module::PB_Module(std::string module_name, Context ctx) : module_name(module_name) {}
 
 void PB_Module::print_content(Printer pr) const {
@@ -527,6 +528,8 @@ void PB_RootModule::print_module(Printer pr) const {
 
 
 
+PB_RootModule::PB_RootModule(std::string lib_name) : PB_Module("m"), lib_name(lib_name) {}
+
 PB_RootModule::PB_RootModule(cppast::cpp_file const& file, std::string lib_name, Context ctx) : PB_Module("m", ctx), lib_name(lib_name) {
   includes.push_back(file.name());
 
@@ -553,6 +556,14 @@ void PB_RootModule::print_prelude(Printer pr) const {
 void PB_RootModule::print_file(Printer pr) const {
   print_prelude(pr);
   print_module(pr);
+}
+
+PB_RootModule& PB_RootModule::operator+=(PB_RootModule const& other) {
+  for (auto const& k : other.includes) includes.push_back(k);
+  for (auto const& k : other.mods) mods.push_back(k);
+  for (auto const& k : other.defs) defs.push_back(k);
+  for (auto const& k : other.cls) cls.push_back(k);
+  return *this;
 }
 
 
