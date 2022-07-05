@@ -1,6 +1,8 @@
 #pragma once
 
 #include <iostream>
+#include <map>
+#include <set>
 
 #include <cppast/cpp_entity_kind.hpp>
 #include <cppast/cpp_forward_declarable.hpp>
@@ -10,7 +12,9 @@
 #include <cppast/cpp_member_variable.hpp>
 #include <cppast/cpp_variable.hpp>
 #include <cppast/cpp_class.hpp>
+#include <cppast/cpp_class_template.hpp>
 #include <cppast/cpp_file.hpp>
+#include <cppast/cpp_preprocessor.hpp>
 
 void print_warn(const std::string& msg);
 
@@ -29,6 +33,15 @@ struct Printer {
   void line(std::string str);
 };
 
+struct Context {
+  cppast::cpp_entity_index const& idx;
+  std::map<std::string, std::string> tpl_args;
+
+  Context(cppast::cpp_entity_index const& idx);
+  Context(Context const& ctx, cppast::cpp_class_template_specialization const& cts);
+  std::string to_string(cppast::cpp_type const& type);
+};
+
 class Name {
   std::string name;
   bool auto_scope;
@@ -39,9 +52,10 @@ class Name {
 
   std::string cpp_simple_name() const;
   std::string cpp_name() const;
+  std::string sane_name() const;
   std::string self_scope() const;
   std::string as_scope() const;
-  std::string bind_name() const; // TODO prevent name collisions
+  std::string bind_name() const;
   std::string py_name() const;
 
   Name operator+(std::string son) const;
@@ -83,11 +97,18 @@ struct PB_Cons {
   Name parent;
 
   PB_Cons(Name parent);
-  PB_Cons(cppast::cpp_constructor const& cons, Name parent);
-
-  std::string str_params() const;
+  PB_Cons(cppast::cpp_constructor const& cons, Name parent, Context ctx);
 
   void print(Printer pr) const;
+};
+
+struct PB_Class;
+
+struct ClassCollection : std::vector<PB_Class> {
+  std::vector<unsigned> order() const;
+
+  void print(Printer pr) const;
+  void print_trampolines(Printer pr) const;
 };
 
 struct PB_Class {
@@ -99,18 +120,20 @@ struct PB_Class {
   std::vector<PB_Def> mems;
   std::vector<PB_Meth> meths;
   std::vector<PB_Cons> conss;
-  std::vector<PB_Class> cls;
+  ClassCollection cls;
 
-  PB_Class(cppast::cpp_class const& cl, Name parent, cppast::cpp_entity_index const& idx);
+  PB_Class(cppast::cpp_class const& cl, Name name, Name parent, Context ctx);
+  PB_Class(cppast::cpp_class const& cl, Name parent, Context ctx);
+  PB_Class(cppast::cpp_class_template_specialization const& cts, Name parent, Context ctx);
 
-  void inherit(cppast::cpp_base_class const& base, cppast::cpp_entity_index const& idx);
+  void inherit(cppast::cpp_base_class const& base, Context ctx);
 
   void add(PB_Def def);
   void add(PB_Meth meth);
   void add(PB_Cons cons);
   void add(PB_Class cl);
 
-  void process(cppast::cpp_entity const& entity, cppast::cpp_entity_index const& idx);
+  void process(cppast::cpp_entity const& entity, Context ctx);
 
   void print_content(Printer pr) const;
   void print(Printer pr) const;
@@ -126,9 +149,9 @@ struct PB_Module {
   Name module_name;
   std::vector<PB_SubModule> mods;
   std::vector<PB_Def> defs;
-  std::vector<PB_Class> cls;
+  ClassCollection cls;
 
-  PB_Module(std::string module_name, cppast::cpp_entity_index const& idx);
+  PB_Module(std::string module_name, Context ctx);
 
   void print_prelude_content(Printer pr) const;
   void print_content(Printer pr) const;
@@ -137,13 +160,13 @@ struct PB_Module {
   void add(PB_Def def);
   void add(PB_Class cl);
 
-  void process(cppast::cpp_entity const& entity, cppast::cpp_entity_index const& idx);
+  void process(cppast::cpp_entity const& entity, Context ctx);
 };
 
 struct PB_SubModule : PB_Module {
   Name parent;
 
-  PB_SubModule(cppast::cpp_namespace const& ns, Name parent, cppast::cpp_entity_index const& idx);
+  PB_SubModule(cppast::cpp_namespace const& ns, Name parent, Context ctx);
 
   void print(Printer pr) const;
   void print_prelude(Printer pr) const;
@@ -153,7 +176,7 @@ struct PB_RootModule : PB_Module {
   std::string lib_name;
   std::vector<std::string> includes;
 
-  PB_RootModule(cppast::cpp_file const& file, std::string lib_name, cppast::cpp_entity_index const& idx);
+  PB_RootModule(cppast::cpp_file const& file, std::string lib_name, Context ctx);
 
   void print_prelude(Printer pr) const;
   void print_module(Printer pr) const;
