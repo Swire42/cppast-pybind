@@ -437,13 +437,40 @@ void ClassCollection::print_trampolines(Printer pr) const {
 
 
 
+void SubModCollection::add(PB_SubModule const& m) {
+  std::string name = m.module_name.cpp_simple_name();
+  if (M_data.contains(name)) {
+    M_data.at(name).merge(m);
+  } else {
+    M_data.insert({name, m});
+  }
+}
+
+void SubModCollection::merge(SubModCollection const& other) {
+  for (auto const& k : other.M_data) {
+    add(k.second);
+  }
+}
+
+void SubModCollection::print(Printer pr) const {
+  for (auto const& k : M_data) {
+    k.second.print(pr);
+  }
+}
+
+void SubModCollection::print_prelude(Printer pr) const {
+  for (auto const& k : M_data) {
+    k.second.print_prelude(pr);
+  }
+}
+
+
+
 PB_Module::PB_Module(std::string module_name) : module_name(module_name) {}
 PB_Module::PB_Module(std::string module_name, Context ctx) : module_name(module_name) {}
 
 void PB_Module::print_content(Printer pr) const {
-  for (auto const& mod : mods) {
-    mod.print(pr);
-  }
+  mods.print(pr);
 
   cls.print(pr);
 
@@ -453,16 +480,14 @@ void PB_Module::print_content(Printer pr) const {
 }
 
 void PB_Module::print_prelude_content(Printer pr) const {
-  for (auto const& mod : mods) {
-    mod.print_prelude(pr);
-  }
+  mods.print_prelude(pr);
 
   for (auto const& cl : cls) {
     cl.print_trampoline(pr);
   }
 }
 
-void PB_Module::add(PB_SubModule mod) { mods.push_back(mod); }
+void PB_Module::add(PB_SubModule mod) { mods.add(mod); }
 void PB_Module::add(PB_Def def) { defs.push_back(def); }
 void PB_Module::add(PB_Class cl) { cls.push_back(cl); }
 
@@ -495,6 +520,12 @@ void PB_Module::process(cppast::cpp_entity const& entity, Context ctx) {
   }
 }
 
+void PB_Module::merge(PB_Module const& other) {
+  mods.merge(other.mods);
+  for (auto const& k : other.defs) defs.push_back(k);
+  for (auto const& k : other.cls) cls.push_back(k);
+}
+
 
 
 PB_SubModule::PB_SubModule(cppast::cpp_namespace const& ns, Name parent, Context ctx) : PB_Module(ns.name(), ctx), parent(parent) {
@@ -515,6 +546,10 @@ void PB_SubModule::print(Printer pr) const {
   print_content(pr+"  ");
   pr.line("}");
   pr.line();
+}
+
+void PB_SubModule::merge(PB_SubModule const& other) {
+  PB_Module::merge(other);
 }
 
 
@@ -558,12 +593,9 @@ void PB_RootModule::print_file(Printer pr) const {
   print_module(pr);
 }
 
-PB_RootModule& PB_RootModule::operator+=(PB_RootModule const& other) {
+void PB_RootModule::merge(PB_RootModule const& other) {
   for (auto const& k : other.includes) includes.push_back(k);
-  for (auto const& k : other.mods) mods.push_back(k);
-  for (auto const& k : other.defs) defs.push_back(k);
-  for (auto const& k : other.cls) cls.push_back(k);
-  return *this;
+  PB_Module::merge(other);
 }
 
 

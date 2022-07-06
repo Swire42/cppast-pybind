@@ -3,6 +3,7 @@
 #include <iostream>
 #include <map>
 #include <set>
+#include <utility>
 
 #include <cppast/cpp_entity_kind.hpp>
 #include <cppast/cpp_forward_declarable.hpp>
@@ -145,9 +146,19 @@ struct PB_Class {
 
 struct PB_SubModule;
 
+struct SubModCollection {
+  std::map<std::string, PB_SubModule> M_data;
+  
+  void add(PB_SubModule const&);
+  void merge(SubModCollection const&);
+
+  void print(Printer pr) const;
+  void print_prelude(Printer pr) const;
+};
+
 struct PB_Module {
   Name module_name;
-  std::vector<PB_SubModule> mods;
+  SubModCollection mods;
   std::vector<PB_Def> defs;
   ClassCollection cls;
 
@@ -162,6 +173,8 @@ struct PB_Module {
   void add(PB_Class cl);
 
   void process(cppast::cpp_entity const& entity, Context ctx);
+
+  void merge(PB_Module const& other);
 };
 
 struct PB_SubModule : PB_Module {
@@ -171,6 +184,8 @@ struct PB_SubModule : PB_Module {
 
   void print(Printer pr) const;
   void print_prelude(Printer pr) const;
+
+  void merge(PB_SubModule const& other);
 };
 
 struct PB_RootModule : PB_Module {
@@ -185,7 +200,7 @@ struct PB_RootModule : PB_Module {
 
   void print_file(Printer pr) const;
 
-  PB_RootModule& operator+=(PB_RootModule const& other);
+  void merge(PB_RootModule const& other);
 };
 
 void process_file(std::ostream& out, cppast::cpp_file const& file, cppast::cpp_entity_index const& idx);

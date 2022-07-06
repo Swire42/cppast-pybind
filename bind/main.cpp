@@ -186,7 +186,7 @@ try
       if (!file)
         return 2;
       //process_file(std::cout, *file, idx);
-      mod += PB_RootModule(*file, "example", Context(idx));
+      mod.merge(PB_RootModule(*file, "example", Context(idx)));
     }
 
     mod.print_file(Printer(std::cout, ""));
