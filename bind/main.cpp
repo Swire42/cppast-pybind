@@ -7,7 +7,7 @@
 
 #include <cppast/libclang_parser.hpp> // for libclang_parser, libclang_compile_config, cpp_entity,...
 
-#include "pb.hpp" // process_file
+#include "pb.hpp" // PyBind bindings generator
 
 // print help options
 void print_help(const cxxopts::Options& options)
@@ -22,22 +22,6 @@ void print_error(const std::string& msg)
 }
 
 
-
-// parse a file
-std::unique_ptr<cppast::cpp_file> parse_file(const cppast::libclang_compile_config& config,
-                       const cppast::diagnostic_logger&     logger,
-                       const std::string& filename, bool fatal_error,
-                       cppast::cpp_entity_index& idx)
-{
-  // the parser is used to parse the entity
-  // there can be multiple parser implementations
-  cppast::libclang_parser parser(type_safe::ref(logger));
-  // parse the file
-  auto file = parser.parse(idx, filename, config);
-  if (fatal_error && parser.error())
-    return nullptr;
-  return file;
-}
 
 int main(int argc, char* argv[])
 try
@@ -177,18 +161,20 @@ try
       logger.set_verbose(true);
 
     std::string module_name = options["modulename"].as<std::string>();
-
+    // main python module
     PB_RootModule mod(module_name);
 
     for (std::string const& filename : options["file"].as<std::vector<std::string>>()) {
       // used to resolve cross references
       cppast::cpp_entity_index idx;
 
-      auto file = parse_file(config, logger, filename,
-                   options.count("fatal_errors") == 1, idx);
-      if (!file)
-        return 2;
-      mod.merge(PB_RootModule(*file, module_name, Context(idx)));
+      // fills the index as it parses files
+      cppast::simple_file_parser<cppast::libclang_parser> parser(type_safe::ref(idx), type_safe::ref(logger));
+      cppast::cpp_file const& file = parser.parse(filename, config).value();
+      // needed to resolve cross files references (ex: inheritance)
+      cppast::resolve_includes(parser, file, config);
+      // merge the file's content into the main module
+      mod.merge(PB_RootModule(file, module_name, Context(idx)));
     }
 
     mod.print_file(Printer(std::cout, ""));
