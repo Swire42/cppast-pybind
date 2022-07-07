@@ -46,6 +46,7 @@ try
                  "cppast - The commandline interface to the cppast library.\n");
   // clang-format off
   option_list.add_options()
+    ("modulename", "python root module name", cxxopts::value<std::string>()->default_value("example"))
     ("h,help", "display this help and exit")
     ("version", "display version information and exit")
     ("v,verbose", "be verbose when parsing")
@@ -175,7 +176,9 @@ try
     if (options.count("verbose"))
       logger.set_verbose(true);
 
-    PB_RootModule mod("example");
+    std::string module_name = options["modulename"].as<std::string>();
+
+    PB_RootModule mod(module_name);
 
     for (std::string const& filename : options["file"].as<std::vector<std::string>>()) {
       // used to resolve cross references
@@ -185,8 +188,7 @@ try
                    options.count("fatal_errors") == 1, idx);
       if (!file)
         return 2;
-      //process_file(std::cout, *file, idx);
-      mod.merge(PB_RootModule(*file, "example", Context(idx)));
+      mod.merge(PB_RootModule(*file, module_name, Context(idx)));
     }
 
     mod.print_file(Printer(std::cout, ""));
