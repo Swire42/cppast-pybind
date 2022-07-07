@@ -8,6 +8,14 @@ void print_warn(const std::string& msg)
   std::cerr << "\033[1;33m" << msg << "\033[0m" << '\n';
 }
 
+#define DEBUG
+
+inline void print_debug(std::string const& msg) {
+#ifdef DEBUG
+  std::cerr << "\033[1;35m" << msg << "\033[0m" << '\n';
+#endif
+}
+
 
 
 Printer::Printer(std::ostream& out, std::string prefix) : out(out), prefix(prefix) {}
@@ -266,19 +274,21 @@ std::string location(cppast::cpp_entity const& entity) {
 }
 
 PB_Class::PB_Class(cppast::cpp_class const& cl, Name name, Name parent, Context ctx) : name(name), parent(parent) {
+  print_debug(cl.name());
   for (cppast::cpp_base_class const& base : cl.bases()) {
     bases.push_back(base.name());
 
     inherit(base, ctx);
   }
-
+  print_debug(cl.name() + " inherit OK");
   for (cppast::cpp_entity const& entity : cl) {
     process(entity, ctx);
   }
+  print_debug(cl.name() + " OK");
 }
 
-PB_Class::PB_Class(cppast::cpp_class const& cl, Name parent, Context ctx) : PB_Class(cl, parent + cl.name(), parent, ctx)
-{}
+PB_Class::PB_Class(cppast::cpp_class const& cl, Name parent, Context ctx) : PB_Class(cl, parent + cl.name(), parent, ctx) {
+}
 
 PB_Class::PB_Class(cppast::cpp_class_template_specialization const& cts, Name parent, Context ctx)
   : PB_Class(
@@ -289,6 +299,7 @@ PB_Class::PB_Class(cppast::cpp_class_template_specialization const& cts, Name pa
 {}
 
 void PB_Class::inherit(cppast::cpp_base_class const& base, Context ctx) {
+  if (!get_class_or_typedef(ctx.idx, base).has_value()) print_warn("yo wtf #2");
   PB_Class base_class = PB_Class(get_class(ctx.idx, base).value(), Name(), ctx); // Todo Name() is bad
   for (auto k : base_class.mems) {
     k.change_parent(name);
