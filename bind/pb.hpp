@@ -1,3 +1,6 @@
+// PyBind11 bindings generator on top of cppast
+// Written by Victor Miquel <victor.miquel@ens.psl.eu>
+
 #pragma once
 
 #include <iostream>

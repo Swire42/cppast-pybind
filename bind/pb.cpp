@@ -1,3 +1,6 @@
+// PyBind11 bindings generator on top of cppast
+// Written by Victor Miquel <victor.miquel@ens.psl.eu>
+
 #include "pb.hpp"
 
 #include <algorithm>
@@ -546,7 +549,7 @@ PB_SubModule::PB_SubModule(cppast::cpp_namespace const& ns, Name parent, Context
 }
 
 void PB_SubModule::print_prelude(Printer pr) const {
-  pr.line("namespace " + module_name.bind_name() + " {");
+  pr.line("namespace " + module_name.cpp_name() + " {");
   print_prelude_content(pr+"  ");
   pr.line("}");
 }
