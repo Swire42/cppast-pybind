@@ -80,18 +80,19 @@ struct PB_Def {
 
   void change_parent(Name new_parent);
 
-  void print(Printer pr) const;
+  virtual void print(Printer pr) const;
 };
 
 struct PB_Meth : PB_Def {
   std::string ret_type;
   std::vector<std::string> params;
-  bool is_virtual, is_pure, is_override, is_final;
+  bool is_virtual, is_pure, is_override, is_final, is_const, is_deleted;
 
   PB_Meth(cppast::cpp_member_function const& func, Name parent);
 
   bool needs_trampoline() const;
   void print_trampoline(Printer pr) const;
+  void print(Printer pr) const override;
 
   bool same_sig(PB_Meth const& other) const;
 };
@@ -125,6 +126,8 @@ struct PB_Class {
   std::vector<PB_Meth> meths;
   std::vector<PB_Cons> conss;
   ClassCollection cls;
+
+  bool is_final;
 
   PB_Class(cppast::cpp_class const& cl, Name name, Name parent, Context ctx);
   PB_Class(cppast::cpp_class const& cl, Name parent, Context ctx);

@@ -207,6 +207,8 @@ PB_Meth::PB_Meth(cppast::cpp_member_function const& func, Name parent) : PB_Def(
   is_pure = cppast::is_pure(vi);
   is_override = cppast::is_overriding(vi);
   is_final = cppast::is_final(vi);
+  is_const = cppast::is_const(func.cv_qualifier());
+  is_deleted = func.body_kind() == cppast::cpp_function_body_kind::cpp_function_deleted;
 
   ret_type = cppast::to_string(func.return_type());
 
@@ -215,8 +217,13 @@ PB_Meth::PB_Meth(cppast::cpp_member_function const& func, Name parent) : PB_Def(
   }
 }
 
+void PB_Meth::print(Printer pr) const {
+  if (is_deleted) return;
+  pr.line(parent.bind_name() + "." + def + "(\"" + name.py_name() + "\", &" + name.cpp_name() + ");");
+}
+
 bool PB_Meth::needs_trampoline() const {
-  return (is_virtual || is_override) && !is_final;
+  return (is_virtual || is_override) && !is_final && !is_deleted;
 }
 
 void PB_Meth::print_trampoline(Printer pr) const {
@@ -226,7 +233,9 @@ void PB_Meth::print_trampoline(Printer pr) const {
   for (unsigned k = 0; k < params.size(); k++) {
     decl += (k ? ", " : "") + params[k] + " arg_" + std::to_string(k);
   }
-  decl += ") override";
+  decl += ")";
+  if (is_const) decl += " const";
+  decl += " override";
 
   pr.line(decl + " {");
   if (is_pure) pr.line("  PYBIND11_OVERRIDE_PURE(");
@@ -278,14 +287,23 @@ std::string location(cppast::cpp_entity const& entity) {
 
 PB_Class::PB_Class(cppast::cpp_class const& cl, Name name, Name parent, Context ctx) : name(name), parent(parent) {
   print_debug(cl.name());
+
+  is_final = cl.is_final();
+
   for (cppast::cpp_base_class const& base : cl.bases()) {
     bases.push_back(base.name());
 
     inherit(base, ctx);
   }
   print_debug(cl.name() + " inherit OK");
+
+  bool is_public = cl.class_kind() == cppast::cpp_class_kind::struct_t;
   for (cppast::cpp_entity const& entity : cl) {
-    process(entity, ctx);
+    if (entity.kind() == cppast::cpp_entity_kind::access_specifier_t) {
+      is_public = dynamic_cast<cppast::cpp_access_specifier const&>(entity).access_specifier() == cppast::cpp_access_specifier_kind::cpp_public;
+    } else if (is_public) {
+      process(entity, ctx);
+    }
   }
   print_debug(cl.name() + " OK");
 }
@@ -371,6 +389,7 @@ void PB_Class::print(Printer pr) const {
 }
 
 bool PB_Class::needs_trampoline() const {
+  if (is_final) return false;
   return std::any_of(meths.cbegin(), meths.cend(), [](auto const& k){ return k.needs_trampoline(); });
 }
 
