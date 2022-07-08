@@ -164,7 +164,7 @@ try
     // main python module
     PB_RootModule mod(module_name);
 
-    for (std::string const& filename : options["file"].as<std::vector<std::string>>()) {
+    /*for (std::string const& filename : options["file"].as<std::vector<std::string>>()) {
       // used to resolve cross references
       cppast::cpp_entity_index idx;
 
@@ -173,6 +173,19 @@ try
       cppast::cpp_file const& file = parser.parse(filename, config).value();
       // needed to resolve cross files references (ex: inheritance)
       cppast::resolve_includes(parser, file, config);
+      // merge the file's content into the main module
+      mod.merge(PB_RootModule(file, module_name, Context(idx)));
+    }*/
+
+    // used to resolve cross references
+    cppast::cpp_entity_index idx;
+
+    // fills the index as it parses files
+    cppast::simple_file_parser<cppast::libclang_parser> parser(type_safe::ref(idx), type_safe::ref(logger));
+
+    cppast::parse_files(parser, options["file"].as<std::vector<std::string>>(), config);
+
+    for (auto const& file : parser.files()) {
       // merge the file's content into the main module
       mod.merge(PB_RootModule(file, module_name, Context(idx)));
     }
