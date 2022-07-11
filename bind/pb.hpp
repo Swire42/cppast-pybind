@@ -113,6 +113,7 @@ struct PB_Cons {
   std::vector<std::string> params;
   Name parent;
   bool is_deleted;
+  bool is_protected;
 
   PB_Cons(Name parent);
   PB_Cons(cppast::cpp_constructor const& cons, Name parent, Context ctx);

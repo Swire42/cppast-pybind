@@ -317,7 +317,7 @@ bool PB_Meth::same_sig(PB_Meth const& other) const {
 
 PB_Cons::PB_Cons(Name parent) : parent(parent) {}
 
-PB_Cons::PB_Cons(cppast::cpp_constructor const& cons, Name parent, Context ctx) : parent(parent) {
+PB_Cons::PB_Cons(cppast::cpp_constructor const& cons, Name parent, Context ctx) : parent(parent), is_protected(ctx.is_protected()) {
   is_deleted = cons.body_kind() == cppast::cpp_function_body_kind::cpp_function_deleted;
 
   for (cppast::cpp_function_parameter const& param : cons.parameters()) {
@@ -327,6 +327,7 @@ PB_Cons::PB_Cons(cppast::cpp_constructor const& cons, Name parent, Context ctx) 
 
 void PB_Cons::print(Printer pr) const {
   if (is_deleted) return;
+  if (is_protected) return;
   pr.line(parent.bind_name() + ".def(py::init<" + str_params(params) + ">());");
 }
 
