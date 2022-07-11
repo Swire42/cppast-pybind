@@ -162,9 +162,19 @@ PB_Def::PB_Def(std::string name, Name parent) : name(parent + name), parent(pare
 
 PB_Def::PB_Def(cppast::cpp_function const& func, Name parent) : PB_Def(func.name(), parent) {}
 
+bool is_const_deep(cppast::cpp_type const& t) {
+  switch (t.kind()) {
+   case cppast::cpp_type_kind::cv_qualified_t:
+    return cppast::is_const(dynamic_cast<cppast::cpp_cv_qualified_type const&>(t).cv_qualifier());
+   case cppast::cpp_type_kind::array_t:
+    return is_const_deep(dynamic_cast<cppast::cpp_array_type const&>(t).value_type());
+   default:
+    return false;
+  }
+}
+
 PB_Def::PB_Def(cppast::cpp_member_variable const& var, Name parent) : PB_Def(var.name(), parent) {
-  if (var.type().kind() == cppast::cpp_type_kind::cv_qualified_t
-      && is_const(dynamic_cast<cppast::cpp_cv_qualified_type const&>(var.type()).cv_qualifier())) {
+  if (is_const_deep(var.type()))
     def = "def_readonly";
   } else {
     def = "def_readwrite";
@@ -172,21 +182,17 @@ PB_Def::PB_Def(cppast::cpp_member_variable const& var, Name parent) : PB_Def(var
 }
 
 PB_Def::PB_Def(cppast::cpp_variable const& var, Name parent) : PB_Def(var.name(), parent) {
-  bool is_static = false;
-  bool is_writable = true;
+  is_static = cppast::is_static(var.storage_class());
 
-  if (var.type().kind() == cppast::cpp_type_kind::cv_qualified_t
-      && is_const(dynamic_cast<cppast::cpp_cv_qualified_type const&>(var.type()).cv_qualifier())) {
-    is_writable = false;
-  }
-
-  if (cppast::is_static(var.storage_class())) is_static = true;
+  bool is_writable = !is_const_deep(var.type());
 
   if (is_writable) {
-    def = is_static ? "def_readwrite_static" : "def_readwrite";
+    def = "def_readwrite";
   } else {
-    def = is_static ? "def_readonly_static" : "def_readonly";
+    def = "def_readonly";
   }
+
+  if (is_static) def += "_static";
 }
 
 void PB_Def::change_parent(Name new_parent) {
@@ -211,12 +217,35 @@ PB_Meth::PB_Meth(cppast::cpp_member_function const& func, Name parent, Context c
   is_deleted = func.body_kind() == cppast::cpp_function_body_kind::cpp_function_deleted;
 
   is_overload = false;
+  is_static = false;
 
   ret_type = cppast::to_string(func.return_type());
 
   for (cppast::cpp_function_parameter const& param : func.parameters()) {
     params.push_back(ctx.to_string(param.type()));
   }
+
+  if (is_static) def += "_static";
+}
+
+PB_Meth::PB_Meth(cppast::cpp_function const& func, Name parent, Context ctx) : PB_Def(func.name(), parent) {
+  is_virtual = false;
+  is_pure = false;
+  is_override = false;
+  is_final = false;
+  is_const = false;
+  is_deleted = func.body_kind() == cppast::cpp_function_body_kind::cpp_function_deleted;
+
+  is_overload = false;
+  is_static = true;
+
+  ret_type = cppast::to_string(func.return_type());
+
+  for (cppast::cpp_function_parameter const& param : func.parameters()) {
+    params.push_back(ctx.to_string(param.type()));
+  }
+
+  if (is_static) def += "_static";
 }
 
 void PB_Meth::print(Printer pr) const {
@@ -373,6 +402,8 @@ void PB_Class::add(PB_Class cl) { cls.add(cl); }
 void PB_Class::process(cppast::cpp_entity const& entity, Context ctx) {
   if (entity.kind() == cppast::cpp_entity_kind::member_function_t) {
     add(PB_Meth(dynamic_cast<cppast::cpp_member_function const&>(entity), name, ctx));
+  } else if (entity.kind() == cppast::cpp_entity_kind::function_t) {
+    add(PB_Meth(dynamic_cast<cppast::cpp_function const&>(entity), name, ctx));
   } else if (entity.kind() == cppast::cpp_entity_kind::constructor_t) {
     add(PB_Cons(dynamic_cast<cppast::cpp_constructor const&>(entity), name, ctx));
   } else if (entity.kind() == cppast::cpp_entity_kind::member_variable_t) {

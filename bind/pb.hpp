@@ -19,6 +19,8 @@
 #include <cppast/cpp_class_template.hpp>
 #include <cppast/cpp_file.hpp>
 #include <cppast/cpp_preprocessor.hpp>
+#include <cppast/cpp_type.hpp>
+#include <cppast/cpp_array_type.hpp>
 
 void print_warn(const std::string& msg);
 
@@ -72,6 +74,8 @@ struct PB_Def {
   Name parent;
   std::string def;
   
+  bool is_static;
+
   PB_Def(std::string name, Name parent);
 
   PB_Def(cppast::cpp_function const& func, Name parent);
@@ -90,6 +94,7 @@ struct PB_Meth : PB_Def {
   bool is_overload;
 
   PB_Meth(cppast::cpp_member_function const& func, Name parent, Context ctx);
+  PB_Meth(cppast::cpp_function const& func, Name parent, Context ctx);
 
   bool needs_trampoline() const;
   void print_trampoline(Printer pr) const;
