@@ -221,11 +221,14 @@ PB_Meth::PB_Meth(cppast::cpp_member_function const& func, Name parent, Context c
 
 void PB_Meth::print(Printer pr) const {
   if (is_deleted) return;
+
+  std::string start = parent.bind_name() + "." + def + "(\"" + name.py_name() + "\", ";
   if (is_overload) {
     std::string cast = "py::overload_cast<" + str_params(params) + ">";
-    pr.line(parent.bind_name() + "." + def + "(\"" + name.py_name() + "\", " + cast + "(&" + name.cpp_name() + "));");
+    if (is_const) pr.line(start + cast + "(&" + name.cpp_name() + ", py::const_));");
+    else pr.line(start + cast + "(&" + name.cpp_name() + "));");
   } else {
-    pr.line(parent.bind_name() + "." + def + "(\"" + name.py_name() + "\", &" + name.cpp_name() + ");");
+    pr.line(start + "&" + name.cpp_name() + ");");
   }
 }
 
