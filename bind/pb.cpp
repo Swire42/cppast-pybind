@@ -200,7 +200,7 @@ void PB_Def::print(Printer pr) const {
 
 
 
-PB_Meth::PB_Meth(cppast::cpp_member_function const& func, Name parent) : PB_Def(func.name(), parent) {
+PB_Meth::PB_Meth(cppast::cpp_member_function const& func, Name parent, Context ctx) : PB_Def(func.name(), parent) {
   auto& vi = func.virtual_info();
 
   is_virtual = cppast::is_virtual(vi);
@@ -210,16 +210,23 @@ PB_Meth::PB_Meth(cppast::cpp_member_function const& func, Name parent) : PB_Def(
   is_const = cppast::is_const(func.cv_qualifier());
   is_deleted = func.body_kind() == cppast::cpp_function_body_kind::cpp_function_deleted;
 
+  is_overload = false;
+
   ret_type = cppast::to_string(func.return_type());
 
   for (cppast::cpp_function_parameter const& param : func.parameters()) {
-    params.push_back(cppast::to_string(param.type()));
+    params.push_back(ctx.to_string(param.type()));
   }
 }
 
 void PB_Meth::print(Printer pr) const {
   if (is_deleted) return;
-  pr.line(parent.bind_name() + "." + def + "(\"" + name.py_name() + "\", &" + name.cpp_name() + ");");
+  if (is_overload) {
+    std::string cast = "py::overload_cast<" + str_params(params) + ">";
+    pr.line(parent.bind_name() + "." + def + "(\"" + name.py_name() + "\", " + cast + "(&" + name.cpp_name() + "));");
+  } else {
+    pr.line(parent.bind_name() + "." + def + "(\"" + name.py_name() + "\", &" + name.cpp_name() + ");");
+  }
 }
 
 bool PB_Meth::needs_trampoline() const {
@@ -321,7 +328,10 @@ PB_Class::PB_Class(cppast::cpp_class_template_specialization const& cts, Name pa
 
 void PB_Class::inherit(cppast::cpp_base_class const& base, Context ctx) {
   if (!get_class_or_typedef(ctx.idx, base).has_value()) print_warn("yo wtf #2");
-  PB_Class base_class = PB_Class(get_class(ctx.idx, base).value(), Name(), ctx); // Todo Name() is bad
+
+  // Name() is bad
+  // Context should be updated with templates arguments
+  PB_Class base_class = PB_Class(get_class(ctx.idx, base).value(), Name(), ctx);
   for (auto k : base_class.mems) {
     k.change_parent(name);
     add(k);
@@ -345,6 +355,12 @@ void PB_Class::add(PB_Def def) { mems.push_back(def); }
 
 void PB_Class::add(PB_Meth meth) {
   std::erase_if(meths, [&](auto const& k) { return meth.same_sig(k); });
+  for (auto& k : meths) {
+    if (k.name.cpp_simple_name() == meth.name.cpp_simple_name()) {
+      k.is_overload = true;
+      meth.is_overload = true;
+    }
+  }
   meths.push_back(meth);
 }
 
@@ -353,7 +369,7 @@ void PB_Class::add(PB_Class cl) { cls.add(cl); }
 
 void PB_Class::process(cppast::cpp_entity const& entity, Context ctx) {
   if (entity.kind() == cppast::cpp_entity_kind::member_function_t) {
-    add(PB_Meth(dynamic_cast<cppast::cpp_member_function const&>(entity), name));
+    add(PB_Meth(dynamic_cast<cppast::cpp_member_function const&>(entity), name, ctx));
   } else if (entity.kind() == cppast::cpp_entity_kind::constructor_t) {
     add(PB_Cons(dynamic_cast<cppast::cpp_constructor const&>(entity), name, ctx));
   } else if (entity.kind() == cppast::cpp_entity_kind::member_variable_t) {

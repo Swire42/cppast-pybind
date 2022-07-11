@@ -87,8 +87,9 @@ struct PB_Meth : PB_Def {
   std::string ret_type;
   std::vector<std::string> params;
   bool is_virtual, is_pure, is_override, is_final, is_const, is_deleted;
+  bool is_overload;
 
-  PB_Meth(cppast::cpp_member_function const& func, Name parent);
+  PB_Meth(cppast::cpp_member_function const& func, Name parent, Context ctx);
 
   bool needs_trampoline() const;
   void print_trampoline(Printer pr) const;
