@@ -58,7 +58,7 @@ std::vector<std::string> split_params(std::string const& params) {
 
 
 
-Context::Context(cppast::cpp_entity_index const& idx) : idx(idx) {}
+Context::Context(cppast::cpp_entity_index const& idx) : idx(idx), access(cppast::cpp_access_specifier_kind::cpp_public) {}
 
 Context::Context(Context const& ctx, cppast::cpp_class_template_specialization const& cts) : idx(ctx.idx) {
   //tpl_args["T"] = "Float";
@@ -72,6 +72,9 @@ Context::Context(Context const& ctx, cppast::cpp_class_template_specialization c
     if (k == args.size()) break;
     tpl_args[std::string(dynamic_cast<cppast::cpp_template_type_parameter const&>(x).name())] = args[k];
   }
+}
+
+Context::Context(Context const& ctx, cppast::cpp_access_specifier_kind access) : idx(ctx.idx), tpl_args(ctx.tpl_args), access(access) {
 }
 
 std::string Context::to_string(cppast::cpp_type const& type) {
@@ -106,6 +109,14 @@ std::string Context::to_string(cppast::cpp_type const& type) {
                                      cppast::cpp_public);
   cppast::detail::write_type(output, type, "");
   return generator.get();
+}
+
+bool Context::is_public() const {
+  return access == cppast::cpp_access_specifier_kind::cpp_public;
+}
+
+bool Context::is_protected() const {
+  return access == cppast::cpp_access_specifier_kind::cpp_protected;
 }
 
 
@@ -158,9 +169,9 @@ void Name::change_parent(Name new_parent) {
 
 
 
-PB_Def::PB_Def(std::string name, Name parent) : name(parent + name), parent(parent), def("def") {}
+PB_Def::PB_Def(std::string name, Name parent, Context ctx) : name(parent + name), parent(parent), def("def"), is_protected(ctx.is_protected()) {}
 
-PB_Def::PB_Def(cppast::cpp_function const& func, Name parent) : PB_Def(func.name(), parent) {}
+PB_Def::PB_Def(cppast::cpp_function const& func, Name parent, Context ctx) : PB_Def(func.name(), parent, ctx) {}
 
 bool is_const_deep(cppast::cpp_type const& t) {
   switch (t.kind()) {
@@ -173,15 +184,15 @@ bool is_const_deep(cppast::cpp_type const& t) {
   }
 }
 
-PB_Def::PB_Def(cppast::cpp_member_variable const& var, Name parent) : PB_Def(var.name(), parent) {
-  if (is_const_deep(var.type()))
+PB_Def::PB_Def(cppast::cpp_member_variable const& var, Name parent, Context ctx) : PB_Def(var.name(), parent, ctx) {
+  if (is_const_deep(var.type())) {
     def = "def_readonly";
   } else {
     def = "def_readwrite";
   }
 }
 
-PB_Def::PB_Def(cppast::cpp_variable const& var, Name parent) : PB_Def(var.name(), parent) {
+PB_Def::PB_Def(cppast::cpp_variable const& var, Name parent, Context ctx) : PB_Def(var.name(), parent, ctx) {
   is_static = cppast::is_static(var.storage_class());
 
   bool is_writable = !is_const_deep(var.type());
@@ -201,12 +212,13 @@ void PB_Def::change_parent(Name new_parent) {
 }
 
 void PB_Def::print(Printer pr) const {
+  if (is_protected) return;
   pr.line(parent.bind_name() + "." + def + "(\"" + name.py_name() + "\", &" + name.cpp_name() + ");");
 }
 
 
 
-PB_Meth::PB_Meth(cppast::cpp_member_function const& func, Name parent, Context ctx) : PB_Def(func.name(), parent) {
+PB_Meth::PB_Meth(cppast::cpp_member_function const& func, Name parent, Context ctx) : PB_Def(func.name(), parent, ctx) {
   auto& vi = func.virtual_info();
 
   is_virtual = cppast::is_virtual(vi);
@@ -228,7 +240,7 @@ PB_Meth::PB_Meth(cppast::cpp_member_function const& func, Name parent, Context c
   if (is_static) def += "_static";
 }
 
-PB_Meth::PB_Meth(cppast::cpp_function const& func, Name parent, Context ctx) : PB_Def(func.name(), parent) {
+PB_Meth::PB_Meth(cppast::cpp_function const& func, Name parent, Context ctx) : PB_Def(func.name(), parent, ctx) {
   is_virtual = false;
   is_pure = false;
   is_override = false;
@@ -250,6 +262,7 @@ PB_Meth::PB_Meth(cppast::cpp_function const& func, Name parent, Context ctx) : P
 
 void PB_Meth::print(Printer pr) const {
   if (is_deleted) return;
+  if (is_protected) return;
 
   std::string start = parent.bind_name() + "." + def + "(\"" + name.py_name() + "\", ";
   if (is_overload) {
@@ -267,6 +280,7 @@ bool PB_Meth::needs_trampoline() const {
 
 void PB_Meth::print_trampoline(Printer pr) const {
   if (!needs_trampoline()) return;
+  if (is_protected) return;
 
   std::string decl = ret_type + " " + name.cpp_simple_name() + "(";
   for (unsigned k = 0; k < params.size(); k++) {
@@ -304,12 +318,15 @@ bool PB_Meth::same_sig(PB_Meth const& other) const {
 PB_Cons::PB_Cons(Name parent) : parent(parent) {}
 
 PB_Cons::PB_Cons(cppast::cpp_constructor const& cons, Name parent, Context ctx) : parent(parent) {
+  is_deleted = cons.body_kind() == cppast::cpp_function_body_kind::cpp_function_deleted;
+
   for (cppast::cpp_function_parameter const& param : cons.parameters()) {
     params.push_back(ctx.to_string(param.type()));
   }
 }
 
 void PB_Cons::print(Printer pr) const {
+  if (is_deleted) return;
   pr.line(parent.bind_name() + ".def(py::init<" + str_params(params) + ">());");
 }
 
@@ -336,12 +353,13 @@ PB_Class::PB_Class(cppast::cpp_class const& cl, Name name, Name parent, Context 
   }
   print_debug(cl.name() + " inherit OK");
 
-  bool is_public = cl.class_kind() == cppast::cpp_class_kind::struct_t;
+  cppast::cpp_access_specifier_kind access = cppast::cpp_access_specifier_kind::cpp_private;
+  if (cl.class_kind() == cppast::cpp_class_kind::struct_t) access = cppast::cpp_access_specifier_kind::cpp_public;
   for (cppast::cpp_entity const& entity : cl) {
     if (entity.kind() == cppast::cpp_entity_kind::access_specifier_t) {
-      is_public = dynamic_cast<cppast::cpp_access_specifier const&>(entity).access_specifier() == cppast::cpp_access_specifier_kind::cpp_public;
-    } else if (is_public) {
-      process(entity, ctx);
+      access = dynamic_cast<cppast::cpp_access_specifier const&>(entity).access_specifier();
+    } else if (access != cppast::cpp_access_specifier_kind::cpp_private) {
+      process(entity, Context(ctx, access));
     }
   }
   print_debug(cl.name() + " OK");
@@ -407,9 +425,9 @@ void PB_Class::process(cppast::cpp_entity const& entity, Context ctx) {
   } else if (entity.kind() == cppast::cpp_entity_kind::constructor_t) {
     add(PB_Cons(dynamic_cast<cppast::cpp_constructor const&>(entity), name, ctx));
   } else if (entity.kind() == cppast::cpp_entity_kind::member_variable_t) {
-    add(PB_Def(dynamic_cast<cppast::cpp_member_variable const&>(entity), name));
+    add(PB_Def(dynamic_cast<cppast::cpp_member_variable const&>(entity), name, ctx));
   } else if (entity.kind() == cppast::cpp_entity_kind::variable_t) {
-    add(PB_Def(dynamic_cast<cppast::cpp_variable const&>(entity), name));
+    add(PB_Def(dynamic_cast<cppast::cpp_variable const&>(entity), name, ctx));
   } else if (entity.kind() == cppast::cpp_entity_kind::class_t) {
     add(PB_Class(dynamic_cast<cppast::cpp_class const&>(entity), name, ctx));
   } else {
@@ -434,6 +452,7 @@ void PB_Class::print_content(Printer pr) const {
 }
 
 void PB_Class::print(Printer pr) const {
+  if (panic()) return;
   std::string decl = "py::class_<" + name.cpp_name();
   for (std::string const& base : bases) decl += ", " + base;
   if (needs_trampoline()) decl += ", " + trampoline_name();
@@ -442,6 +461,11 @@ void PB_Class::print(Printer pr) const {
   print_content(pr+"  ");
   pr.line("}");
   pr.line();
+}
+
+bool PB_Class::panic() const {
+  // abstract class that cannot be overrided for now
+  return std::any_of(meths.cbegin(), meths.cend(), [](auto const& k){ return k.is_protected && k.is_pure; });
 }
 
 bool PB_Class::needs_trampoline() const {
@@ -454,6 +478,7 @@ std::string PB_Class::trampoline_name() const {
 }
 
 void PB_Class::print_trampoline(Printer pr) const {
+  if (panic()) return;
   if (!needs_trampoline()) return;
 
   pr.line("struct " + trampoline_name() + " : public " + name.cpp_name() + " {");
@@ -607,7 +632,7 @@ void PB_Module::add(PB_Class cl) { cls.add(cl); }
 
 void PB_Module::process(cppast::cpp_entity const& entity, Context ctx) {
   if (entity.kind() == cppast::cpp_entity_kind::function_t) {
-    add(PB_Def(dynamic_cast<cppast::cpp_function const&>(entity), module_name));
+    add(PB_Def(dynamic_cast<cppast::cpp_function const&>(entity), module_name, ctx));
   } else if (entity.kind() == cppast::cpp_entity_kind::namespace_t) {
     add(PB_SubModule(dynamic_cast<cppast::cpp_namespace const&>(entity), module_name, ctx));
   } else if (entity.kind() == cppast::cpp_entity_kind::class_t) {

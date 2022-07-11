@@ -42,10 +42,15 @@ struct Printer {
 struct Context {
   cppast::cpp_entity_index const& idx;
   std::map<std::string, std::string> tpl_args;
+  cppast::cpp_access_specifier_kind access;
 
   Context(cppast::cpp_entity_index const& idx);
   Context(Context const& ctx, cppast::cpp_class_template_specialization const& cts);
+  Context(Context const& ctx, cppast::cpp_access_specifier_kind access);
   std::string to_string(cppast::cpp_type const& type);
+
+  bool is_public() const;
+  bool is_protected() const;
 };
 
 class Name {
@@ -75,12 +80,13 @@ struct PB_Def {
   std::string def;
   
   bool is_static;
+  bool is_protected;
 
-  PB_Def(std::string name, Name parent);
+  PB_Def(std::string name, Name parent, Context ctx);
 
-  PB_Def(cppast::cpp_function const& func, Name parent);
-  PB_Def(cppast::cpp_member_variable const& var, Name parent);
-  PB_Def(cppast::cpp_variable const& var, Name parent);
+  PB_Def(cppast::cpp_function const& func, Name parent, Context ctx);
+  PB_Def(cppast::cpp_member_variable const& var, Name parent, Context ctx);
+  PB_Def(cppast::cpp_variable const& var, Name parent, Context ctx);
 
   void change_parent(Name new_parent);
 
@@ -106,6 +112,7 @@ struct PB_Meth : PB_Def {
 struct PB_Cons {
   std::vector<std::string> params;
   Name parent;
+  bool is_deleted;
 
   PB_Cons(Name parent);
   PB_Cons(cppast::cpp_constructor const& cons, Name parent, Context ctx);
@@ -158,6 +165,7 @@ struct PB_Class {
   void print_content(Printer pr) const;
   void print(Printer pr) const;
 
+  bool panic() const; // unhandled case => do not bind binding
   bool needs_trampoline() const;
   std::string trampoline_name() const;
   void print_trampoline(Printer pr) const;
