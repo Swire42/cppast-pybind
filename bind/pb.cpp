@@ -330,7 +330,15 @@ void PB_Class::inherit(cppast::cpp_base_class const& base, Context ctx) {
     k.change_parent(name);
     add(k);
   }
-  for (auto const& k : base_class.cls) add(k);
+  cls.merge(base_class.cls);
+}
+
+void PB_Class::merge(PB_Class const& other) {
+  if (other.bases.size() > bases.size()) bases = other.bases;
+  for (auto const& k : other.mems) mems.push_back(k);
+  for (auto const& k : other.meths) meths.push_back(k);
+  for (auto const& k : other.conss) conss.push_back(k);
+  cls.merge(other.cls);
 }
 
 void PB_Class::add(PB_Def def) { mems.push_back(def); }
@@ -341,7 +349,7 @@ void PB_Class::add(PB_Meth meth) {
 }
 
 void PB_Class::add(PB_Cons cons) { conss.push_back(cons); }
-void PB_Class::add(PB_Class cl) { cls.push_back(cl); }
+void PB_Class::add(PB_Class cl) { cls.add(cl); }
 
 void PB_Class::process(cppast::cpp_entity const& entity, Context ctx) {
   if (entity.kind() == cppast::cpp_entity_kind::member_function_t) {
@@ -372,9 +380,7 @@ void PB_Class::print_content(Printer pr) const {
   for (auto const& meth : meths) {
     meth.print(pr);
   }
-  for (auto const& cl : cls) {
-    cl.print(pr);
-  }
+  cls.print(pr);
 }
 
 void PB_Class::print(Printer pr) const {
@@ -413,12 +419,33 @@ void PB_Class::print_trampoline(Printer pr) const {
 
 
 
-std::vector<unsigned> ClassCollection::order() const {
+void ClassCollection::add(PB_Class const& x) {
+  std::string name = x.name.cpp_simple_name();
+  if (M_data.contains(name)) {
+    M_data.at(name).merge(x);
+  } else {
+    M_data.insert({name, x});
+  }
+}
+
+void ClassCollection::merge(ClassCollection const& other) {
+  for (auto const& k : other.M_data) {
+    add(k.second);
+  }
+}
+
+std::vector<PB_Class> ClassCollection::order() const {
   std::vector<unsigned> rem, ret;
   std::set<std::string> waiting;
-  for (unsigned k = 0; k < size(); k++) {
+  std::vector<PB_Class> vec_data;
+
+  for (auto const& x : M_data) {
+    vec_data.push_back(x.second);
+  }
+
+  for (unsigned k = 0; k < vec_data.size(); k++) {
     rem.push_back(k);
-    waiting.insert(operator[](k).name.cpp_simple_name());
+    waiting.insert(vec_data[k].name.cpp_simple_name());
   }
 
   while (!rem.empty()) {
@@ -427,7 +454,7 @@ std::vector<unsigned> ClassCollection::order() const {
 
     for (unsigned k : rem) {
       bool is_ok = true;
-      for (std::string const& base : operator[](k).bases) {
+      for (std::string const& base : vec_data[k].bases) {
         if (waiting.contains(base)) {
           is_ok = false;
           break;
@@ -435,7 +462,7 @@ std::vector<unsigned> ClassCollection::order() const {
       }
       if (is_ok) {
         ret.push_back(k);
-        waiting.erase(operator[](k).name.cpp_simple_name());
+        waiting.erase(vec_data[k].name.cpp_simple_name());
         none = false;
       } else {
         next.push_back(k);
@@ -447,24 +474,30 @@ std::vector<unsigned> ClassCollection::order() const {
     if (none) {
       for (unsigned k : rem) {
         ret.push_back(k);
-        print_warn("missing parent(s) for "+operator[](k).name.cpp_name());
+        print_warn("missing parent(s) for "+vec_data[k].name.cpp_name());
       }
       break;
     }
   }
 
-  return ret;
+  std::vector<PB_Class> ret_data;
+
+  for (unsigned k : ret) {
+    ret_data.push_back(vec_data[k]);
+  }
+
+  return ret_data;
 }
 
 void ClassCollection::print(Printer pr) const {
-  for (unsigned k : order()) {
-    operator[](k).print(pr);
+  for (auto const& k : order()) {
+    k.print(pr);
   }
 }
 
 void ClassCollection::print_trampolines(Printer pr) const {
-  for (unsigned k : order()) {
-    operator[](k).print_trampoline(pr);
+  for (auto const& k : order()) {
+    k.print_trampoline(pr);
   }
 }
 
@@ -515,14 +548,12 @@ void PB_Module::print_content(Printer pr) const {
 void PB_Module::print_prelude_content(Printer pr) const {
   mods.print_prelude(pr);
 
-  for (auto const& cl : cls) {
-    cl.print_trampoline(pr);
-  }
+  cls.print_trampolines(pr);
 }
 
 void PB_Module::add(PB_SubModule mod) { mods.add(mod); }
 void PB_Module::add(PB_Def def) { defs.push_back(def); }
-void PB_Module::add(PB_Class cl) { cls.push_back(cl); }
+void PB_Module::add(PB_Class cl) { cls.add(cl); }
 
 void PB_Module::process(cppast::cpp_entity const& entity, Context ctx) {
   if (entity.kind() == cppast::cpp_entity_kind::function_t) {
@@ -556,7 +587,7 @@ void PB_Module::process(cppast::cpp_entity const& entity, Context ctx) {
 void PB_Module::merge(PB_Module const& other) {
   mods.merge(other.mods);
   for (auto const& k : other.defs) defs.push_back(k);
-  for (auto const& k : other.cls) cls.push_back(k);
+  cls.merge(other.cls);
 }
 
 

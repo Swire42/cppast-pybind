@@ -109,8 +109,13 @@ struct PB_Cons {
 
 struct PB_Class;
 
-struct ClassCollection : std::vector<PB_Class> {
-  std::vector<unsigned> order() const;
+struct ClassCollection {
+  std::map<std::string, PB_Class> M_data;
+  
+  void add(PB_Class const&);
+  void merge(ClassCollection const&);
+
+  std::vector<PB_Class> order() const;
 
   void print(Printer pr) const;
   void print_trampolines(Printer pr) const;
@@ -134,6 +139,8 @@ struct PB_Class {
   PB_Class(cppast::cpp_class_template_specialization const& cts, Name parent, Context ctx);
 
   void inherit(cppast::cpp_base_class const& base, Context ctx);
+
+  void merge(PB_Class const&);
 
   void add(PB_Def def);
   void add(PB_Meth meth);
