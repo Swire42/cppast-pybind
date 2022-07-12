@@ -33,6 +33,7 @@ struct Printer {
   Printer(std::ostream& out, std::string prefix);
 
   Printer operator+(std::string str);
+  Printer& operator+=(std::string str);
 
   void line();
 
@@ -102,6 +103,7 @@ struct PB_Meth : PB_Def {
   PB_Meth(cppast::cpp_member_function const& func, Name parent, Context ctx);
   PB_Meth(cppast::cpp_function const& func, Name parent, Context ctx);
 
+  bool panic() const;
   bool needs_trampoline() const;
   void print_trampoline(Printer pr) const;
   void print(Printer pr) const override;
@@ -118,6 +120,7 @@ struct PB_Cons {
   PB_Cons(Name parent);
   PB_Cons(cppast::cpp_constructor const& cons, Name parent, Context ctx);
 
+  bool panic() const;
   void print(Printer pr) const;
 };
 

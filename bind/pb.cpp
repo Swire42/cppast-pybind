@@ -27,6 +27,11 @@ Printer Printer::operator+(std::string str) {
   return Printer(out, prefix+str);
 }
 
+Printer& Printer::operator+=(std::string str) {
+  prefix += str;
+  return *this;
+}
+
 void Printer::line() {
   out << std::endl;
 }
@@ -260,11 +265,18 @@ PB_Meth::PB_Meth(cppast::cpp_function const& func, Name parent, Context ctx) : P
   if (is_static) def += "_static";
 }
 
+bool PB_Meth::panic() const {
+  return std::any_of(params.cbegin(), params.cend(), [](auto const& k){ return k.find("&&") != std::string::npos; });
+}
+
 void PB_Meth::print(Printer pr) const {
   if (is_deleted) return;
   if (is_protected) return;
+  if (panic()) pr += "//";
 
-  std::string start = parent.bind_name() + "." + def + "(\"" + name.py_name() + "\", ";
+  std::string pyname = name.py_name();
+  if (is_overload && is_static) pyname += "_static"; // overloading a method with both static and instance methods is not supported
+  std::string start = parent.bind_name() + "." + def + "(\"" + pyname + "\", ";
   if (is_overload) {
     std::string cast = "py::overload_cast<" + str_params(params) + ">";
     if (is_const) pr.line(start + cast + "(&" + name.cpp_name() + ", py::const_));");
@@ -281,6 +293,7 @@ bool PB_Meth::needs_trampoline() const {
 void PB_Meth::print_trampoline(Printer pr) const {
   if (!needs_trampoline()) return;
   if (is_protected) return;
+  if (panic()) pr += "//";
 
   std::string decl = ret_type + " " + name.cpp_simple_name() + "(";
   for (unsigned k = 0; k < params.size(); k++) {
@@ -325,9 +338,14 @@ PB_Cons::PB_Cons(cppast::cpp_constructor const& cons, Name parent, Context ctx) 
   }
 }
 
+bool PB_Cons::panic() const {
+  return std::any_of(params.cbegin(), params.cend(), [](auto const& k){ return k.find("&&") != std::string::npos; });
+}
+
 void PB_Cons::print(Printer pr) const {
   if (is_deleted) return;
   if (is_protected) return;
+  if (panic()) pr += "//";
   pr.line(parent.bind_name() + ".def(py::init<" + str_params(params) + ">());");
 }
 
@@ -391,7 +409,7 @@ void PB_Class::inherit(cppast::cpp_base_class const& base, Context ctx) {
     k.change_parent(name);
     add(k);
   }
-  cls.merge(base_class.cls);
+  //cls.merge(base_class.cls);
 }
 
 void PB_Class::merge(PB_Class const& other) {
@@ -453,7 +471,7 @@ void PB_Class::print_content(Printer pr) const {
 }
 
 void PB_Class::print(Printer pr) const {
-  if (panic()) return;
+  if (panic()) pr += "//";
   std::string decl = "py::class_<" + name.cpp_name();
   for (std::string const& base : bases) decl += ", " + base;
   if (needs_trampoline()) decl += ", " + trampoline_name();
@@ -479,7 +497,7 @@ std::string PB_Class::trampoline_name() const {
 }
 
 void PB_Class::print_trampoline(Printer pr) const {
-  if (panic()) return;
+  if (panic()) pr += "//";
   if (!needs_trampoline()) return;
 
   pr.line("struct " + trampoline_name() + " : public " + name.cpp_name() + " {");
